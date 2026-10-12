@@ -3,12 +3,19 @@ import { useCallback, useState } from 'react';
 import type { Asset } from '../models/config/assets';
 import { formatAssetAmount, isValidAssetAddress, parseAssetAmount } from '../models/assetAmounts';
 import { errorMessage } from '../models/format';
-import { getFeeRates, sendBitcoin, type FeeRates } from '../models/services/bitcoinService';
-import { sendEvm } from '../models/services/ethereumService';
-import { sendSolana } from '../models/services/solanaService';
+import {
+  estimateBitcoinFee,
+  estimateMainnetBitcoinFee,
+  getFeeRates,
+  getMainnetFeeRates,
+  sendBitcoin,
+  sendMainnetBitcoin,
+  type FeeRates,
+} from '../models/services/bitcoinService';
+import { estimateEvmTransferFee, sendEvm } from '../models/services/ethereumService';
+import { estimateSolanaTransferFee, sendSolana } from '../models/services/solanaService';
 import { recordActivity } from '../models/services/walletStorage';
 import type { Status } from '../models/types';
-import { useExternalSigner } from './useWallet';
 import { useWalletStore } from './WalletStore';
 
 export type FeeSpeed = keyof FeeRates;
@@ -16,7 +23,6 @@ export type FeeSpeed = keyof FeeRates;
 /** Validated send for any coin: ETH on an EVM network (ethers.js) or tBTC (bitcoinjs). */
 export function useSendAsset(asset: Asset | undefined) {
   const { active } = useWalletStore();
-  const external = useExternalSigner();
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<Status>();
   const [txUrl, setTxUrl] = useState<string>();
@@ -29,16 +35,12 @@ export function useSendAsset(asset: Asset | undefined) {
         setStatus({ kind: 'error', text: 'This coin is read-only — sending isn’t available yet.' });
         return undefined;
       }
-      if (asset.mainnet && asset.kind === 'evm' && !external.isConnected) {
-        setStatus({ kind: 'error', text: 'Connect an external wallet to send real ETH' });
-        return undefined;
-      }
       if (!isValidAssetAddress(asset, to)) {
         setStatus({
           kind: 'error',
           text:
             asset.kind === 'bitcoin'
-              ? 'Enter a testnet address (tb1…)'
+              ? asset.mainnet ? 'Enter a valid Bitcoin mainnet address' : 'Enter a testnet address (tb1…)'
               : asset.kind === 'solana'
                 ? 'Enter a valid Solana address'
                 : 'Enter a valid 0x… address',
@@ -63,56 +65,88 @@ export function useSendAsset(asset: Asset | undefined) {
       setStatus(undefined);
       return value;
     },
-    [asset, external.isConnected],
+    [asset],
+  );
+
+  const estimateFee = useCallback(
+    async (to: string, amount: bigint, speed: FeeSpeed = 'normal') => {
+      if (!asset || !active) throw new Error('Wallet is not ready');
+      if (asset.kind === 'bitcoin') {
+        const mnemonic = active.keys.mnemonic;
+        if (!mnemonic) throw new Error('Bitcoin sending requires a wallet recovery phrase');
+        const rates = asset.mainnet ? await getMainnetFeeRates() : await getFeeRates();
+        const estimate = asset.mainnet ? estimateMainnetBitcoinFee : estimateBitcoinFee;
+        return estimate({ mnemonic, amountSats: amount, feeRate: rates[speed] });
+      }
+      if (asset.kind === 'solana') {
+        return estimateSolanaTransferFee({
+          from: active.solAddress,
+          to: to.trim(),
+          amountLamports: amount,
+          mainnet: asset.mainnet,
+        });
+      }
+      return estimateEvmTransferFee({
+        from: active.keys.address,
+        network: asset.chain,
+        to: to.trim(),
+        amountWei: amount,
+      });
+    },
+    [asset, active],
   );
 
   const send = useCallback(
-    async (to: string, amount: bigint, speed: FeeSpeed = 'normal') => {
+    async (to: string, amount: bigint, speed: FeeSpeed = 'normal', approvedFee?: bigint) => {
       if (!asset || !active) return false;
       if (asset.readOnly) {
         setStatus({ kind: 'error', text: 'This coin is read-only — sending isn’t available yet.' });
         return false;
       }
-      if (asset.mainnet && asset.kind === 'evm' && !external.isConnected) {
-        setStatus({ kind: 'error', text: 'Connect an external wallet to send real ETH' });
+      if (asset.mainnet && approvedFee === undefined) {
+        setStatus({ kind: 'error', text: 'Estimate and review the mainnet network fee before sending' });
         return false;
       }
       setSending(true);
       setTxUrl(undefined);
       setStatus({
         kind: 'info',
-        text: asset.mainnet ? 'Approve in your connected wallet…' : 'Signing and broadcasting…',
+        text: 'Signing and broadcasting…',
       });
       try {
         let hash: string;
         if (asset.kind === 'bitcoin') {
-          const fees = await getFeeRates();
-          ({ txid: hash } = await sendBitcoin({
-            mnemonic: active.keys.mnemonic!,
-            to,
-            amountSats: amount,
-            feeRate: fees[speed],
-          }));
+          const mnemonic = active.keys.mnemonic;
+          if (!mnemonic) throw new Error('Bitcoin sending requires a wallet recovery phrase');
+          const fees = asset.mainnet ? await getMainnetFeeRates() : await getFeeRates();
+          if (asset.mainnet) {
+            ({ txid: hash } = await sendMainnetBitcoin({
+              mnemonic,
+              to,
+              amountSats: amount,
+              feeRate: fees[speed],
+              maxFeeSats: approvedFee,
+            }));
+          } else {
+            ({ txid: hash } = await sendBitcoin({ mnemonic, to, amountSats: amount, feeRate: fees[speed] }));
+          }
         } else if (asset.kind === 'solana') {
-          // solana-mainnet is read-only (blocked above), so this only ever runs on devnet.
+          const mnemonic = active.keys.mnemonic;
+          if (!mnemonic) throw new Error('Solana sending requires a wallet recovery phrase');
           ({ signature: hash } = await sendSolana({
-            mnemonic: active.keys.mnemonic!,
+            mnemonic,
             to: to.trim(),
             amountLamports: amount,
+            mainnet: asset.mainnet,
+            maxFeeLamports: approvedFee,
           }));
-        } else if (asset.mainnet) {
-          // Real funds: signs through the connected external wallet only, never the in-app key.
-          const signer = await external.getSigner();
-          const tx = await signer.sendTransaction({ to: to.trim(), value: amount });
-          const receipt = await tx.wait(1, 120_000);
-          if (!receipt || receipt.status !== 1) throw new Error('Transaction reverted');
-          hash = tx.hash;
         } else {
           ({ hash } = await sendEvm({
             privateKey: active.keys.privateKey,
             network: asset.chain,
             to: to.trim(),
             amountWei: amount,
+            maxFeeWei: approvedFee,
           }));
         }
         await recordActivity({
@@ -138,8 +172,8 @@ export function useSendAsset(asset: Asset | undefined) {
         setSending(false);
       }
     },
-    [asset, active, external],
+    [asset, active],
   );
 
-  return { validate, send, sending, status, setStatus, txUrl };
+  return { validate, estimateFee, send, sending, status, setStatus, txUrl };
 }

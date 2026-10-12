@@ -10,7 +10,7 @@ import {
 } from 'react';
 
 import { sepolia } from '../models/config/networks';
-import { deriveBitcoinAccount } from '../models/services/bitcoinService';
+import { deriveBitcoinAccount, deriveMainnetBitcoinAccount } from '../models/services/bitcoinService';
 import { createWallet, importFromMnemonic, type WalletKeys } from '../models/services/ethereumService';
 import { deriveSolanaAccount } from '../models/services/solanaService';
 import * as storage from '../models/services/walletStorage';
@@ -28,6 +28,7 @@ export type ActiveWallet = WalletMeta & {
   /** EVM keys (address, privateKey, mnemonic) — same address on every EVM network. */
   keys: WalletKeys;
   btcAddress: string;
+  btcMainnetAddress: string;
   solAddress: string;
 };
 
@@ -63,7 +64,7 @@ type WalletStoreValue = {
 
 const WalletStoreContext = createContext<WalletStoreValue | undefined>(undefined);
 
-type DerivedKeys = { id: string; keys: WalletKeys; btcAddress: string; solAddress: string };
+type DerivedKeys = { id: string; keys: WalletKeys; btcAddress: string; btcMainnetAddress: string; solAddress: string };
 
 /** Derives EVM + Bitcoin + Solana keys off the UI's critical path. */
 function deriveKeys(id: string, mnemonic: string): Promise<DerivedKeys> {
@@ -74,6 +75,7 @@ function deriveKeys(id: string, mnemonic: string): Promise<DerivedKeys> {
           id,
           keys: importFromMnemonic(mnemonic),
           btcAddress: deriveBitcoinAccount(mnemonic).address,
+          btcMainnetAddress: deriveMainnetBitcoinAccount(mnemonic).address,
           solAddress: deriveSolanaAccount(mnemonic).address,
         });
       } catch (e) {
@@ -126,7 +128,13 @@ export function WalletStoreProvider({ children }: { children: ReactNode }) {
   const active = useMemo<ActiveWallet | undefined>(
     () =>
       status === 'unlocked' && meta && derived?.id === meta.id
-        ? { ...meta, keys: derived.keys, btcAddress: derived.btcAddress, solAddress: derived.solAddress }
+        ? {
+            ...meta,
+            keys: derived.keys,
+            btcAddress: derived.btcAddress,
+            btcMainnetAddress: derived.btcMainnetAddress,
+            solAddress: derived.solAddress,
+          }
         : undefined,
     [status, meta, derived],
   );

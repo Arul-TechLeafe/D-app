@@ -2,9 +2,8 @@ import type { AppKitNetwork } from '@reown/appkit-react-native';
 import { JsonRpcProvider, Wallet } from 'ethers';
 
 // ---------------------------------------------------------------------------
-// ethers.js service for the in-app wallet. Use it on TESTNETS only (Sepolia,
-// Hardhat Local): keys created or imported here live in app memory, which is
-// fine for test coins but never for a real mainnet wallet.
+// ethers.js native-coin wallet service for testnets and Ethereum Mainnet.
+// Mainnet sends are locally signed only after the send screen's PIN approval.
 // ---------------------------------------------------------------------------
 
 export type WalletKeys = {
@@ -81,15 +80,55 @@ export function getInAppSigner(privateKey: string, network: AppKitNetwork): Wall
   return new Wallet(privateKey, getProvider(network));
 }
 
+/** Estimates the network fee for a native-coin transfer from the in-app address. */
+export async function estimateEvmTransferFee(params: {
+  from: string;
+  network: AppKitNetwork;
+  to: string;
+  amountWei: bigint;
+}): Promise<bigint> {
+  const provider = getProvider(params.network);
+  const [gasLimit, feeData] = await Promise.all([
+    provider.estimateGas({ from: params.from, to: params.to, value: params.amountWei }),
+    provider.getFeeData(),
+  ]);
+  const pricePerGas = feeData.maxFeePerGas ?? feeData.gasPrice;
+  if (pricePerGas === null) throw new Error('Unable to retrieve Ethereum network fee');
+  return gasLimit * pricePerGas;
+}
+
 /** Signs and broadcasts a native-coin transfer, then waits for 1 confirmation. */
 export async function sendEvm(params: {
   privateKey: string;
   network: AppKitNetwork;
   to: string;
   amountWei: bigint;
+  maxFeeWei?: bigint;
 }): Promise<{ hash: string }> {
-  const signer = getInAppSigner(params.privateKey, params.network);
-  const tx = await signer.sendTransaction({ to: params.to, value: params.amountWei });
+  const provider = getProvider(params.network);
+  const from = new Wallet(params.privateKey).address;
+  const [gasLimit, feeData] = await Promise.all([
+    provider.estimateGas({ from, to: params.to, value: params.amountWei }),
+    provider.getFeeData(),
+  ]);
+  const txFee = feeData.maxFeePerGas ?? feeData.gasPrice;
+  if (txFee === null) throw new Error('Unable to retrieve Ethereum network fee');
+  if (params.maxFeeWei !== undefined && gasLimit * txFee > params.maxFeeWei) {
+    throw new Error('Ethereum network fee increased; estimate the fee and review the transaction again');
+  }
+
+  const txRequest =
+    feeData.maxFeePerGas !== null
+      ? {
+          to: params.to,
+          value: params.amountWei,
+          gasLimit,
+          maxFeePerGas: feeData.maxFeePerGas,
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ?? 0n,
+        }
+      : { to: params.to, value: params.amountWei, gasLimit, gasPrice: feeData.gasPrice! };
+  const signer = new Wallet(params.privateKey, provider);
+  const tx = await signer.sendTransaction(txRequest);
   const receipt = await tx.wait(1, 120_000);
   if (!receipt || receipt.status !== 1) throw new Error('Transaction reverted');
   return { hash: tx.hash };

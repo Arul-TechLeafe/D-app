@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 
 import { ASSETS, getAsset, type Asset, type AssetId } from '../models/config/assets';
-import { formatEth } from '../models/format';
+import { errorMessage, formatEth } from '../models/format';
 import { getEvmTransactions } from '../models/services/evmHistoryService';
 import { formatBtc, getBitcoinTransactions, getMainnetBitcoinTransactions } from '../models/services/bitcoinService';
 import { formatSol, getMainnetSolanaTransactions, getSolanaTransactions, type SolanaTx } from '../models/services/solanaService';
-import { loadActivity, loadWatchAddress } from '../models/services/walletStorage';
+import { loadActivity } from '../models/services/walletStorage';
 import { useAsync } from './useAsync';
 import { useWalletStore } from './WalletStore';
 
@@ -30,19 +30,22 @@ export type HistoryItem = {
  */
 const EXCLUDED_FROM_ACTIVITY_LOG: AssetId[] = ['btc', 'btc-mainnet', 'sol', 'solana-mainnet'];
 
+async function loadHistoryOrEmpty<T>(load: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await load();
+  } catch (error) {
+    if (/\b404\b/.test(errorMessage(error))) return [];
+    throw error;
+  }
+}
+
 export function useHistory(filter?: AssetId) {
   const { active } = useWalletStore();
   const walletId = active?.id;
   const btcAddress = active?.btcAddress;
+  const btcMainnetAddress = active?.btcMainnetAddress;
   const evmAddress = active?.keys.address;
   const solAddress = active?.solAddress;
-  const [watchAddresses, setWatchAddresses] = useState<{ btcMainnet?: string; solMainnet?: string }>({});
-
-  useEffect(() => {
-    Promise.all([loadWatchAddress('btc-mainnet'), loadWatchAddress('solana-mainnet')]).then(
-      ([btcMainnet, solMainnet]) => setWatchAddresses({ btcMainnet, solMainnet }),
-    );
-  }, []);
 
   const load = useCallback(async (): Promise<HistoryItem[]> => {
     const btc = ASSETS.find((a) => a.id === 'btc')!;
@@ -54,16 +57,18 @@ export function useHistory(filter?: AssetId) {
       loadActivity(),
       Promise.all(
         evmAssets.map((id) =>
-          evmAddress ? getEvmTransactions(id, evmAddress).catch(() => []) : Promise.resolve([]),
+          evmAddress
+            ? loadHistoryOrEmpty(() => getEvmTransactions(id, evmAddress))
+            : Promise.resolve([]),
         ),
       ),
-      !filter || filter === 'btc' ? getBitcoinTransactions(btcAddress!).catch(() => []) : Promise.resolve([]),
-      (!filter || filter === 'btc-mainnet') && watchAddresses.btcMainnet
-        ? getMainnetBitcoinTransactions(watchAddresses.btcMainnet).catch(() => [])
+      !filter || filter === 'btc' ? loadHistoryOrEmpty(() => getBitcoinTransactions(btcAddress!)) : Promise.resolve([]),
+      (!filter || filter === 'btc-mainnet') && btcMainnetAddress
+        ? loadHistoryOrEmpty(() => getMainnetBitcoinTransactions(btcMainnetAddress))
         : Promise.resolve([]),
-      !filter || filter === 'sol' ? getSolanaTransactions(solAddress!).catch(() => []) : Promise.resolve([]),
-      (!filter || filter === 'solana-mainnet') && watchAddresses.solMainnet
-        ? getMainnetSolanaTransactions(watchAddresses.solMainnet).catch(() => [])
+      !filter || filter === 'sol' ? getSolanaTransactions(solAddress!) : Promise.resolve([]),
+      (!filter || filter === 'solana-mainnet') && solAddress
+        ? getMainnetSolanaTransactions(solAddress)
         : Promise.resolve([]),
     ]);
 
@@ -71,9 +76,11 @@ export function useHistory(filter?: AssetId) {
     const chainHashes = new Set<string>();
     const evmChainItems: HistoryItem[] = evmAssets.flatMap((id, i) => {
       const asset = getAsset(id)!;
+      const accountAddress = evmAddress;
+      if (!accountAddress) return [];
       return evmTxs[i].map((tx): HistoryItem => {
         chainHashes.add(tx.hash.toLowerCase());
-        const out = tx.from.toLowerCase() === evmAddress!.toLowerCase();
+        const out = tx.from.toLowerCase() === accountAddress.toLowerCase();
         return {
           key: `${id}-${tx.hash}`,
           asset,
@@ -139,7 +146,7 @@ export function useHistory(filter?: AssetId) {
     return [...evmChainItems, ...evmItems, ...btcItems, ...btcMainnetItems, ...solItems, ...solMainnetItems].sort(
       (a, b) => (b.time ?? Infinity) - (a.time ?? Infinity),
     );
-  }, [walletId, evmAddress, btcAddress, solAddress, watchAddresses, filter]);
+  }, [walletId, evmAddress, btcAddress, btcMainnetAddress, solAddress, filter]);
 
   const { data, loading, error, refresh } = useAsync(walletId && btcAddress && solAddress ? load : undefined);
   return { items: data, loading, error, refresh };

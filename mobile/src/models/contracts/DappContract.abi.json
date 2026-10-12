@@ -12,6 +12,11 @@
   },
   {
     "inputs": [],
+    "name": "AlreadyFulfilled",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "EmptyInitialMessage",
     "type": "error"
   },
@@ -59,7 +64,17 @@
   },
   {
     "inputs": [],
+    "name": "InvalidSourceNetwork",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "InvalidTransactionIndex",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "SameNetworkNotAllowed",
     "type": "error"
   },
   {
@@ -69,7 +84,22 @@
   },
   {
     "inputs": [],
+    "name": "SourceTransactionAlreadyRecorded",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "SourceTransactionRequired",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "TransferFailed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "UnsupportedTargetNetwork",
     "type": "error"
   },
   {
@@ -94,6 +124,209 @@
       }
     ],
     "name": "CounterIncremented",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "ethAmountWei",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "targetNetwork",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "targetAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "targetAddress",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "quoteId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "CrossNetworkOrderCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "ethAmountWei",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "targetNetwork",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "targetAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "targetTxId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "CrossNetworkOrderFulfilled",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "sourceNetwork",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "sourceTxId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "CrossNetworkSourceRecorded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "ethAmountWei",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "btcAmountSats",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "btcAddress",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "quoteId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "CrossNetworkSwapCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "ethAmountWei",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "btcAmountSats",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "bitcoinTxId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "CrossNetworkSwapFulfilled",
     "type": "event"
   },
   {
@@ -159,6 +392,37 @@
       {
         "indexed": true,
         "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "orderId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "quoteId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "TestnetExchangeOrderCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
         "name": "account",
         "type": "address"
       },
@@ -209,10 +473,200 @@
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "btcAmountSats",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "btcSenderAddress",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "ethAmountWei",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "ethRecipient",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "quoteId",
+        "type": "string"
+      }
+    ],
+    "name": "createBitcoinToEthOrder",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "ethAmountWei",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "targetNetwork",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "targetAmount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "targetAddress",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "quoteId",
+        "type": "string"
+      }
+    ],
+    "name": "createCrossNetworkOrder",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "ethAmountWei",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "btcAmountSats",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "btcAddress",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "quoteId",
+        "type": "string"
+      }
+    ],
+    "name": "createCrossNetworkSwap",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "string",
+            "name": "sourceNetwork",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "sourceAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "sourceAddress",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "targetNetwork",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "targetAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "targetAddress",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "quoteId",
+            "type": "string"
+          }
+        ],
+        "internalType": "struct DappContract.TestnetExchangeOrder",
+        "name": "order",
+        "type": "tuple"
+      }
+    ],
+    "name": "createTestnetExchangeOrder",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "deposit",
     "outputs": [],
     "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "targetTxId",
+        "type": "string"
+      }
+    ],
+    "name": "fulfillCrossNetworkOrder",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "bitcoinTxId",
+        "type": "string"
+      }
+    ],
+    "name": "fulfillCrossNetworkSwap",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -276,6 +730,291 @@
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      }
+    ],
+    "name": "getCrossNetworkOrder",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "user",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "ethAmountWei",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "btcAmountSats",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "btcAddress",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "bitcoinTxId",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "timestamp",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "fulfilled",
+            "type": "bool"
+          },
+          {
+            "internalType": "string",
+            "name": "targetNetwork",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "targetAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "targetAddress",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "targetTxId",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "sourceNetwork",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "sourceAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "sourceAddress",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "sourceTxId",
+            "type": "string"
+          }
+        ],
+        "internalType": "struct DappContract.CrossNetworkSwap",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      }
+    ],
+    "name": "getCrossNetworkSwap",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "ethAmountWei",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "btcAmountSats",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "btcAddress",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "quoteId",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "bitcoinTxId",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bool",
+        "name": "fulfilled",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "getCrossNetworkSwapCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "getCrossNetworkSwaps",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "user",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "ethAmountWei",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "btcAmountSats",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "btcAddress",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "bitcoinTxId",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "timestamp",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "fulfilled",
+            "type": "bool"
+          },
+          {
+            "internalType": "string",
+            "name": "targetNetwork",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "targetAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "targetAddress",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "targetTxId",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "sourceNetwork",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "sourceAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "sourceAddress",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "sourceTxId",
+            "type": "string"
+          }
+        ],
+        "internalType": "struct DappContract.CrossNetworkSwap[]",
+        "name": "",
+        "type": "tuple[]"
       }
     ],
     "stateMutability": "view",
@@ -431,6 +1170,29 @@
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "sourceTxId",
+        "type": "string"
+      }
+    ],
+    "name": "recordCrossNetworkSourceTx",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {

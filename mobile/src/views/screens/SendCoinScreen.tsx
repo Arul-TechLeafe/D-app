@@ -10,7 +10,7 @@ import { useSendAsset, type FeeSpeed } from '../../controllers/useSendAsset';
 import { useWalletStore } from '../../controllers/WalletStore';
 import { formatAssetAmount } from '../../models/assetAmounts';
 import { getAsset } from '../../models/config/assets';
-import { shortAddress } from '../../models/format';
+import { errorMessage } from '../../models/format';
 import { PinPad } from '../components/PinPad';
 import { Button, Card, Field, Muted, Row, Screen, StatusMessage, colors } from '../components/ui';
 import { CoinBadge } from '../components/wallet';
@@ -27,7 +27,7 @@ export default function SendCoinScreen() {
   const asset = getAsset(id);
   const { verifyPin } = useWalletStore();
   const { byId, refresh } = useAssets();
-  const { validate, send, sending, status, txUrl } = useSendAsset(asset);
+  const { validate, estimateFee, send, sending, status, setStatus, txUrl } = useSendAsset(asset);
   const { contacts } = usePrefs();
   const saved = contacts.filter((c) => c.kind === asset?.kind);
 
@@ -35,6 +35,8 @@ export default function SendCoinScreen() {
   const [amount, setAmount] = useState('');
   const [speed, setSpeed] = useState<FeeSpeed>('normal');
   const [review, setReview] = useState<bigint>();
+  const [estimatedFee, setEstimatedFee] = useState<bigint>();
+  const [estimatingFee, setEstimatingFee] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
   const [pinError, setPinError] = useState<string>();
   const [pinAttempt, setPinAttempt] = useState(0);
@@ -74,7 +76,7 @@ export default function SendCoinScreen() {
 
       <Field
         label="Recipient address"
-        placeholder={asset.kind === 'bitcoin' ? 'tb1…' : asset.kind === 'solana' ? 'Base58 address' : '0x…'}
+        placeholder={asset.kind === 'bitcoin' ? (asset.mainnet ? 'bc1…' : 'tb1…') : asset.kind === 'solana' ? 'Base58 address' : '0x…'}
         value={to}
         onChangeText={setTo}
       />
@@ -113,10 +115,33 @@ export default function SendCoinScreen() {
 
       <StatusMessage status={status} />
       <Button
-        title="Next"
-        onPress={() => {
+        title="Estimate fee and review"
+        loading={estimatingFee}
+        onPress={async () => {
+          if (balance === undefined) {
+            setStatus({ kind: 'error', text: 'Wait for the wallet balance to load before sending' });
+            return;
+          }
           const value = validate(to, amount, balance);
-          if (value !== undefined) setReview(value);
+          if (value === undefined) return;
+          setEstimatingFee(true);
+          setStatus(undefined);
+          try {
+            const fee = await estimateFee(to, value, speed);
+            if (balance !== undefined && value + fee > balance) {
+              setStatus({
+                kind: 'error',
+                text: `Not enough ${asset.symbol} to cover amount and estimated network fee`,
+              });
+              return;
+            }
+            setEstimatedFee(fee);
+            setReview(value);
+          } catch (e) {
+            setStatus({ kind: 'error', text: errorMessage(e) });
+          } finally {
+            setEstimatingFee(false);
+          }
         }}
       />
 
@@ -128,29 +153,27 @@ export default function SendCoinScreen() {
           {review !== undefined ? (
             <Card>
               <Row label="Send" value={`${formatAssetAmount(asset, review, 8)} ${asset.symbol}`} />
-              <Row label="To" value={shortAddress(to.trim(), 8)} mono />
+              <Row label="Full recipient" value={to.trim()} mono />
               <Row label="Network" value={`${asset.name} ${asset.networkName}`} />
-              <Row label="Network fee" value={asset.kind === 'bitcoin' ? `${speed} (sat/vB)` : 'Estimated by network'} />
+              <Row
+                label="Estimated network fee"
+                value={estimatedFee === undefined ? 'Unavailable' : `${formatAssetAmount(asset, estimatedFee, 8)} ${asset.symbol}`}
+              />
+              <Row
+                label="Estimated total"
+                value={`${formatAssetAmount(asset, review + (estimatedFee ?? 0n), 8)} ${asset.symbol}`}
+              />
             </Card>
           ) : null}
           <Muted>
             {asset.mainnet
-              ? 'Real funds — double-check the address before confirming.'
+              ? 'REAL FUNDS: irreversible transfer. Verify the full recipient and network fee. Approving with your PIN signs using this app wallet.'
               : 'Testnet coins only — they have no real value.'}
           </Muted>
           <Button
             title="Confirm"
             loading={sending}
             onPress={async () => {
-              if (asset.mainnet) {
-                const ok = await send(to, review!, speed);
-                setReview(undefined);
-                if (ok) {
-                  setDone(true);
-                  refresh();
-                }
-                return;
-              }
               setPinOpen(true);
             }}
           />
@@ -162,7 +185,11 @@ export default function SendCoinScreen() {
       <Modal visible={pinOpen} animationType="slide" onRequestClose={() => setPinOpen(false)}>
         <PinPad
           title="Enter PIN to approve"
-          subtitle={review !== undefined ? `Send ${formatAssetAmount(asset, review, 8)} ${asset.symbol}` : undefined}
+          subtitle={
+            review !== undefined
+              ? `Send ${formatAssetAmount(asset, review, 8)} ${asset.symbol} to ${to.trim()} on ${asset.networkName}`
+              : undefined
+          }
           error={pinError}
           busy={sending}
           resetKey={pinAttempt}
@@ -173,7 +200,7 @@ export default function SendCoinScreen() {
               return;
             }
             setPinError(undefined);
-            const ok = await send(to, review!, speed);
+            const ok = await send(to, review!, speed, estimatedFee);
             setPinOpen(false);
             setReview(undefined);
             if (ok) {

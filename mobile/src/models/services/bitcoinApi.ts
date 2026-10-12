@@ -11,8 +11,8 @@ import { BITCOIN_MAINNET, BITCOIN_TESTNET4 } from '../config/bitcoin';
 //                                ├─ UTXOs
 //                                └─ fees, broadcast
 //
-// Same Esplora API shape on testnet4 (send/spend, full access) and mainnet
-// (read-only here — no signing path exists for real BTC in this app).
+// Same Esplora API shape on testnet4 and mainnet. Mainnet transfers use the
+// active wallet's locally derived key and require PIN approval in the UI.
 // Raw API shapes live here; bitcoinService turns them into app types (bigint sats).
 // ---------------------------------------------------------------------------
 
@@ -132,14 +132,32 @@ export async function broadcastTx(hex: string): Promise<string> {
   return String(data).trim();
 }
 
-/** GET /address/:address — funded/spent totals (confirmed and mempool). Mainnet, read-only. */
+/** GET /address/:address — funded/spent totals (confirmed and mempool). Mainnet. */
 export async function fetchMainnetAddress(address: string): Promise<ApiAddress> {
   const { data } = await bitcoinMainnetApi.get<ApiAddress>(`/address/${address}`);
   return data;
 }
 
-/** GET /address/:address/txs — mempool txs, then the latest 25 confirmed. Mainnet, read-only. */
+/** GET /address/:address/txs — mempool txs, then the latest 25 confirmed. Mainnet. */
 export async function fetchMainnetAddressTxs(address: string): Promise<ApiTx[]> {
   const { data } = await bitcoinMainnetApi.get<ApiTx[]>(`/address/${address}/txs`);
   return data;
+}
+
+export async function fetchMainnetAddressUtxos(address: string): Promise<ApiUtxo[]> {
+  const { data } = await bitcoinMainnetApi.get<ApiUtxo[]>(`/address/${address}/utxo`);
+  return data;
+}
+
+export async function fetchMainnetFees(): Promise<ApiFees> {
+  const { data } = await bitcoinMainnetApi.get<ApiFees>('/v1/fees/recommended');
+  return data;
+}
+
+export async function broadcastMainnetTx(hex: string): Promise<string> {
+  const { data } = await bitcoinMainnetApi.post<string>('/tx', hex, {
+    headers: { 'Content-Type': 'text/plain', Accept: 'text/plain' },
+    transformResponse: (raw) => raw,
+  });
+  return String(data).trim();
 }

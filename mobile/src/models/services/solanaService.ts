@@ -7,6 +7,7 @@ import { formatUnits, getBytes, Mnemonic, parseUnits } from 'ethers';
 import { SOLANA_DEVNET } from '../config/solana';
 import {
   fetchBalance,
+  fetchFeeForMessage,
   fetchLatestBlockhash,
   fetchSignaturesForAddress,
   fetchTransaction,
@@ -20,7 +21,7 @@ import {
 // ---------------------------------------------------------------------------
 // Solana wallet service. The key is derived from the same 12-word recovery
 // phrase as the in-app Bitcoin/Ethereum wallets (SLIP-0010 ed25519,
-// m/44'/501'/0'/0'). Test coins only on devnet — never use a real wallet phrase.
+// m/44'/501'/0'/0'). Mainnet and devnet share this key; both support native SOL.
 //
 // Built on @noble/curves + @noble/hashes + bs58 directly (no @solana/web3.js):
 // those are pure-Uint8Array, audited primitives already in this app's
@@ -128,23 +129,22 @@ export async function getMainnetSolanaBalance(address: string): Promise<bigint> 
 }
 
 async function mapSignature(client: SolanaClient, address: string, sig: { signature: string; blockTime: number | null; err: unknown }): Promise<SolanaTx> {
-  try {
-    const tx = await fetchTransaction(client, sig.signature);
-    const idx = tx?.transaction.message.accountKeys.findIndex(
-      (k) => (typeof k === 'string' ? k : k.pubkey) === address,
-    );
-    const pre = idx !== undefined && idx >= 0 ? (tx?.meta?.preBalances[idx] ?? 0) : 0;
-    const post = idx !== undefined && idx >= 0 ? (tx?.meta?.postBalances[idx] ?? 0) : 0;
-    return {
-      signature: sig.signature,
-      confirmed: !sig.err,
-      time: sig.blockTime ?? undefined,
-      amount: BigInt(post - pre),
-      fee: BigInt(tx?.meta?.fee ?? 0),
-    };
-  } catch {
-    return { signature: sig.signature, confirmed: !sig.err, time: sig.blockTime ?? undefined, amount: 0n, fee: 0n };
-  }
+  const tx = await fetchTransaction(client, sig.signature);
+  if (!tx?.meta) throw new Error(`Transaction details are unavailable for ${sig.signature}`);
+  const idx = tx.transaction.message.accountKeys.findIndex(
+    (k) => (typeof k === 'string' ? k : k.pubkey) === address,
+  );
+  if (idx < 0) throw new Error(`Wallet address was not found in transaction ${sig.signature}`);
+  const pre = tx.meta.preBalances[idx];
+  const post = tx.meta.postBalances[idx];
+  if (pre === undefined || post === undefined) throw new Error(`Balance changes are unavailable for ${sig.signature}`);
+  return {
+    signature: sig.signature,
+    confirmed: !sig.err,
+    time: sig.blockTime ?? undefined,
+    amount: BigInt(post - pre),
+    fee: BigInt(tx.meta.fee),
+  };
 }
 
 /** Latest transactions, newest first. */
@@ -163,7 +163,7 @@ export async function requestSolanaAirdrop(address: string): Promise<string> {
   return requestAirdrop(solanaDevnetClient, address, LAMPORTS_PER_SOL);
 }
 
-// ---- sending (devnet only — mainnet Solana has no signing path in this app) ------
+// ---- native SOL transfers ----------------------------------------------------------
 
 const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
@@ -221,13 +221,45 @@ function buildTransferMessage(params: { payer: Uint8Array; recipient: Uint8Array
   return new Uint8Array(bytes);
 }
 
-export async function sendSolana(params: { mnemonic: string; to: string; amountLamports: bigint }): Promise<{ signature: string }> {
+export async function estimateSolanaTransferFee(params: {
+  from: string;
+  to: string;
+  amountLamports: bigint;
+  mainnet?: boolean;
+}): Promise<bigint> {
+  const payer = bs58.decode(params.from.trim());
+  const recipient = bs58.decode(params.to.trim());
+  if (payer.length !== 32 || recipient.length !== 32) throw new Error('Enter valid Solana addresses');
+  if (params.from.trim() === params.to.trim()) throw new Error('Choose a recipient address different from your wallet');
+  const client = params.mainnet ? solanaMainnetClient : solanaDevnetClient;
+  const recentBlockhash = bs58.decode(await fetchLatestBlockhash(client));
+  const message = buildTransferMessage({ payer, recipient, lamports: params.amountLamports, recentBlockhash });
+  return fetchFeeForMessage(client, bytesToBase64(message));
+}
+
+export async function sendSolana(params: {
+  mnemonic: string;
+  to: string;
+  amountLamports: bigint;
+  mainnet?: boolean;
+  maxFeeLamports?: bigint;
+}): Promise<{ signature: string }> {
   const priv = deriveSolanaPrivateKey(params.mnemonic);
   const payer = ed25519.getPublicKey(priv);
   const recipient = bs58.decode(params.to.trim());
   if (recipient.length !== 32) throw new Error('Invalid Solana address');
 
-  const recentBlockhash = bs58.decode(await fetchLatestBlockhash(solanaDevnetClient));
+  const client = params.mainnet ? solanaMainnetClient : solanaDevnetClient;
+  const estimatedFee = await estimateSolanaTransferFee({
+    from: bs58.encode(payer),
+    to: params.to,
+    amountLamports: params.amountLamports,
+    mainnet: params.mainnet,
+  });
+  if (params.maxFeeLamports !== undefined && estimatedFee > params.maxFeeLamports) {
+    throw new Error('Solana network fee increased; estimate the fee and review the transaction again');
+  }
+  const recentBlockhash = bs58.decode(await fetchLatestBlockhash(client));
   const message = buildTransferMessage({ payer, recipient, lamports: params.amountLamports, recentBlockhash });
   const signature = ed25519.sign(message, priv);
 
@@ -236,6 +268,6 @@ export async function sendSolana(params: { mnemonic: string; to: string; amountL
   tx.set(signature, 1);
   tx.set(message, 1 + signature.length);
 
-  const sig = await sendRawTransaction(solanaDevnetClient, bytesToBase64(tx));
+  const sig = await sendRawTransaction(client, bytesToBase64(tx));
   return { signature: sig };
 }

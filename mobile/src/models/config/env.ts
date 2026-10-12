@@ -20,6 +20,9 @@ export const SOLANA_DEVNET_RPC_URL =
 export const SOLANA_MAINNET_RPC_URL =
   process.env.EXPO_PUBLIC_SOLANA_MAINNET_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
+export const SOLANA_MAINNET_RPC_FALLBACK_URL =
+  process.env.EXPO_PUBLIC_SOLANA_MAINNET_RPC_FALLBACK_URL || 'https://solana-rpc.publicnode.com';
+
 // ---- optional app-store / legal / support links; the matching Settings rows are hidden when unset ----
 export const SUPPORT_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL ?? '';
 export const PRIVACY_URL = process.env.EXPO_PUBLIC_PRIVACY_URL ?? '';

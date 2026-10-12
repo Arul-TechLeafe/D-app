@@ -31,8 +31,14 @@ export function isValidAssetAddress(asset: Asset, value: string): boolean {
 }
 
 /** The receive address for `asset` given the wallet's EVM, Bitcoin and Solana addresses. */
-export function assetAddress(asset: Asset, evmAddress: string, btcAddress: string, solAddress: string) {
-  if (asset.kind === 'bitcoin') return btcAddress;
+export function assetAddress(
+  asset: Asset,
+  evmAddress: string,
+  btcAddress: string,
+  solAddress: string,
+  btcMainnetAddress: string,
+) {
+  if (asset.kind === 'bitcoin') return asset.mainnet ? btcMainnetAddress : btcAddress;
   if (asset.kind === 'solana') return solAddress;
   return evmAddress;
 }

@@ -18,12 +18,9 @@ type AssetBase = {
   faucetUrl?: string;
   txUrl?: (hash: string) => string;
   addressUrl?: (address: string) => string;
-  /**
-   * Real funds. EVM sends must go through a connected external wallet
-   * (useExternalSigner) — the in-app key never signs for a mainnet asset.
-   */
+  /** Real funds; mainnet transfers require explicit review and PIN approval. */
   mainnet?: boolean;
-  /** No send path exists for this asset — balances/history only. */
+  /** Asset is display-only. */
   readOnly?: boolean;
 };
 
@@ -32,7 +29,7 @@ export type Asset =
   | (AssetBase & { kind: 'evm'; chain: AppKitNetwork })
   | (AssetBase & { kind: 'solana' });
 
-/** Every coin the wallet shows. Testnets are fully custodied here; mainnet coins never touch the in-app key. */
+/** Mainnet entries use addresses derived from the active wallet and support native-coin transfers. */
 export const ASSETS: Asset[] = [
   {
     id: 'btc',
@@ -76,12 +73,11 @@ export const ASSETS: Asset[] = [
     id: 'btc-mainnet',
     kind: 'bitcoin',
     name: 'Bitcoin',
-    networkName: 'Mainnet (watch-only)',
+    networkName: 'Mainnet',
     symbol: BITCOIN_MAINNET.symbol,
     color: '#F7931A',
     badge: '₿',
     mainnet: true,
-    readOnly: true,
     txUrl: bitcoinMainnetTxUrl,
     addressUrl: bitcoinMainnetAddressUrl,
   },
@@ -101,12 +97,11 @@ export const ASSETS: Asset[] = [
     id: 'solana-mainnet',
     kind: 'solana',
     name: 'Solana',
-    networkName: 'Mainnet (watch-only)',
+    networkName: 'Mainnet',
     symbol: 'SOL',
     color: '#9945FF',
     badge: 'S',
     mainnet: true,
-    readOnly: true,
     txUrl: solanaMainnetTxUrl,
     addressUrl: solanaMainnetAddressUrl,
   },

@@ -1,124 +1,90 @@
 import { router, useLocalSearchParams, Stack, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
+import * as Clipboard from 'expo-clipboard';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAssets } from '../../controllers/useAssets';
 import { useBitcoinUtxos } from '../../controllers/useBitcoinUtxos';
-import { useExternalSigner } from '../../controllers/useWallet';
 import { useHistory } from '../../controllers/useHistory';
 import { usePrices } from '../../controllers/usePrices';
 import { formatAssetAmount } from '../../models/assetAmounts';
 import type { MarketCoinId } from '../../models/services/marketApi';
-import { appKit } from '../../models/config/appkit';
 import { bitcoinTxUrl } from '../../models/config/bitcoin';
 import { getAsset } from '../../models/config/assets';
-import { formatBtc, isValidMainnetBitcoinAddress } from '../../models/services/bitcoinService';
-import { isValidSolanaAddress } from '../../models/services/solanaService';
-import { saveWatchAddress } from '../../models/services/walletStorage';
+import { formatBtc } from '../../models/services/bitcoinService';
 import { shortAddress } from '../../models/format';
 import { HistoryList } from '../components/HistoryList';
 import { MiniPriceChart } from '../components/MiniPriceChart';
-import { Button, Card, Field, Muted, Screen, colors } from '../components/ui';
+import { Button, Card, Muted, Screen, StatusMessage, colors } from '../components/ui';
 import { ActionButton, CoinBadge } from '../components/wallet';
 
 /** One coin: balance, Send / Receive / Swap, faucet and its history. */
 export default function CoinScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const asset = getAsset(id);
-  const { byId, loading, refresh, watchAddresses, refreshWatchAddress } = useAssets();
+  const { byId, loading, refresh } = useAssets();
   const { getFiatValue, refresh: refreshPrices, loading: pricesLoading } = usePrices();
-  const history = useHistory(asset?.id);
-  const utxos = useBitcoinUtxos(asset?.id === 'btc');
-  const external = useExternalSigner();
-
+  const { items: historyItems, loading: historyLoading, error: historyError, refresh: refreshHistory } = useHistory(asset?.id);
+  const { utxos: bitcoinUtxos, error: utxoError, refresh: refreshUtxos } = useBitcoinUtxos(asset?.id === 'btc');
   useFocusEffect(
     useCallback(() => {
       refresh();
       refreshPrices();
-      if (history.refresh) history.refresh();
-      if (utxos.refresh) utxos.refresh();
-    }, [refresh, refreshPrices, history.refresh, utxos.refresh])
+      refreshHistory();
+      refreshUtxos();
+      const timer = setInterval(() => {
+        refresh();
+        refreshHistory();
+        refreshUtxos();
+      }, 30_000);
+      return () => clearInterval(timer);
+    }, [refresh, refreshPrices, refreshHistory, refreshUtxos])
   );
-  const [watchInput, setWatchInput] = useState('');
-  const [watchError, setWatchError] = useState<string>();
-
   if (!asset) return <Screen><Muted>Unknown coin.</Muted></Screen>;
   const b = byId(asset.id);
   const marketCoin: MarketCoinId = asset.kind === 'bitcoin' ? 'btc' : asset.kind === 'solana' ? 'sol' : 'eth';
-  const watchAddress = watchAddresses[asset.id];
-  const needsWatchAddress = asset.readOnly && !watchAddress;
-
-  const handleSend = () => {
-    if (asset.mainnet && asset.kind === 'evm' && !external.isConnected) {
-      appKit.open();
-      return;
-    }
-    router.push({ pathname: '/send/[id]', params: { id: asset.id } });
-  };
 
   return (
     <Screen
-      refreshing={loading || history.loading || pricesLoading}
+      refreshing={loading || historyLoading || pricesLoading}
       onRefresh={() => {
         refresh();
-        history.refresh();
-        utxos.refresh();
+        refreshHistory();
+        refreshUtxos();
         refreshPrices();
       }}
     >
       <Stack.Screen options={{ title: `${asset.name} (${asset.networkName})` }} />
 
-      {needsWatchAddress ? (
-        <Card title={`Watch a ${asset.name} mainnet address`}>
+      {asset.mainnet ? (
+        <Card title={`Your ${asset.name} mainnet address`}>
           <Muted>
-            This app never holds a real {asset.name} key. Enter an address you already own elsewhere to view its
-            balance and history.
+            Derived from the active wallet. Mainnet transfers use real funds and cannot be reversed; confirm the
+            network and recipient carefully before sending. The recovery phrase controls these funds, and this
+            app’s send support is limited to native coins.
           </Muted>
-          <Field
-            label={`${asset.name} address`}
-            placeholder={asset.kind === 'bitcoin' ? 'bc1…' : 'Base58 address'}
-            value={watchInput}
-            onChangeText={(v) => {
-              setWatchInput(v);
-              setWatchError(undefined);
-            }}
-          />
-          {watchError ? <Muted>{watchError}</Muted> : null}
+          <Text selectable style={s.addressFull}>{b?.address ?? 'Preparing wallet address…'}</Text>
           <Button
-            title="Watch address"
-            onPress={async () => {
-              const value = watchInput.trim();
-              const valid = asset.kind === 'bitcoin' ? isValidMainnetBitcoinAddress(value) : isValidSolanaAddress(value);
-              if (!valid) {
-                setWatchError(
-                  asset.kind === 'bitcoin'
-                    ? 'Enter a valid mainnet address (bc1…, 1… or 3…)'
-                    : 'Enter a valid Solana address',
-                );
-                return;
-              }
-              await saveWatchAddress(asset.id, value);
-              await refreshWatchAddress();
-              refresh();
-              history.refresh();
-            }}
+            title="Copy address"
+            variant="secondary"
+            onPress={() => b?.address && Clipboard.setStringAsync(b.address)}
           />
         </Card>
-      ) : (
-        <View style={s.hero}>
-          <CoinBadge asset={asset} size={64} />
-          <Text style={s.balance} numberOfLines={1} adjustsFontSizeToFit>
-            {b?.balance !== undefined ? `${formatAssetAmount(asset, b.balance, 8)} ${asset.symbol}` : (b?.error ?? '…')}
-          </Text>
-          {b?.balance !== undefined ? (
-            <Text style={s.fiatBalance}>≈ {getFiatValue(asset.id, b.balance)}</Text>
-          ) : null}
-          {b?.pending ? (
-            <Muted>{`Pending: ${formatAssetAmount(asset, b.pending, 8)} ${asset.symbol}`}</Muted>
-          ) : null}
-          <Text style={s.address}>{shortAddress(b?.address, 8)}</Text>
-        </View>
-      )}
+      ) : null}
+
+      <View style={s.hero}>
+        <CoinBadge asset={asset} size={64} />
+        <Text style={s.balance} numberOfLines={1} adjustsFontSizeToFit>
+          {b?.balance !== undefined ? `${formatAssetAmount(asset, b.balance, 8)} ${asset.symbol}` : (b?.error ?? '…')}
+        </Text>
+        {b?.balance !== undefined ? (
+          <Text style={s.fiatBalance}>≈ {getFiatValue(asset.id, b.balance)}</Text>
+        ) : null}
+        {b?.pending ? (
+          <Muted>{`Pending: ${formatAssetAmount(asset, b.pending, 8)} ${asset.symbol}`}</Muted>
+        ) : null}
+        <Text style={s.address}>{shortAddress(b?.address, 8)}</Text>
+      </View>
 
       <MiniPriceChart
         coinId={marketCoin}
@@ -127,19 +93,23 @@ export default function CoinScreen() {
 
       {!asset.readOnly ? (
         <View style={s.actions}>
-          <ActionButton icon="arrow-up" label="Send" onPress={handleSend} />
+          <ActionButton
+            icon="arrow-up"
+            label="Send"
+            onPress={() => router.push({ pathname: '/send/[id]', params: { id: asset.id } })}
+          />
           <ActionButton
             icon="arrow-down"
             label="Receive"
             onPress={() => router.push({ pathname: '/receive/[id]', params: { id: asset.id } })}
           />
-          <ActionButton icon="swap-horizontal" label="Swap" onPress={() => router.push('/swap')} />
+          {!asset.mainnet ? <ActionButton icon="swap-horizontal" label="Swap" onPress={() => router.push('/swap')} /> : null}
         </View>
       ) : null}
 
-      {asset.kind !== 'solana' ? (
+      {!asset.mainnet && asset.kind !== 'solana' ? (
         <Button
-          title={asset.mainnet ? `Buy ${asset.symbol}` : `Buy / Sell ${asset.name}`}
+          title={`Buy / Sell ${asset.name}`}
           variant="secondary"
           onPress={() => router.push({ pathname: '/buy-sell', params: { mode: 'buy' } })}
         />
@@ -154,10 +124,10 @@ export default function CoinScreen() {
       ) : null}
 
       {asset.id === 'btc' ? (
-        <Card title={`UTXOs${utxos.utxos ? ` (${utxos.utxos.length})` : ''}`}>
-          {utxos.error ? <Muted>{utxos.error}</Muted> : null}
-          {utxos.utxos?.length === 0 ? <Muted>No unspent outputs yet.</Muted> : null}
-          {utxos.utxos?.map((u) => (
+        <Card title={`UTXOs${bitcoinUtxos ? ` (${bitcoinUtxos.length})` : ''}`}>
+          {utxoError ? <Muted>{utxoError}</Muted> : null}
+          {bitcoinUtxos?.length === 0 ? <Muted>No unspent outputs yet.</Muted> : null}
+          {bitcoinUtxos?.map((u) => (
             <Pressable key={`${u.txid}:${u.vout}`} onPress={() => Linking.openURL(bitcoinTxUrl(u.txid))} style={s.utxo}>
               <Text style={s.utxoId} numberOfLines={1}>{`${u.txid.slice(0, 10)}…${u.txid.slice(-6)}:${u.vout}`}</Text>
               <Text style={s.utxoValue}>{`${formatBtc(u.value)} ${asset.symbol}${u.confirmed ? '' : ' · pending'}`}</Text>
@@ -167,8 +137,9 @@ export default function CoinScreen() {
       ) : null}
 
       <Card title="History">
+        <StatusMessage status={historyError ? { kind: 'error', text: historyError } : undefined} />
         <HistoryList
-          items={history.items}
+          items={historyItems}
           emptyText={
             asset.kind === 'bitcoin' || asset.kind === 'solana'
               ? 'No transactions yet.'
@@ -185,6 +156,7 @@ const s = StyleSheet.create({
   balance: { color: colors.text, fontSize: 30, fontWeight: '800', marginTop: 6 },
   fiatBalance: { color: colors.muted, fontSize: 16, fontWeight: '600', marginTop: -4 },
   address: { color: colors.muted, fontFamily: 'monospace', fontSize: 13 },
+  addressFull: { color: colors.text, fontFamily: 'monospace', fontSize: 13, lineHeight: 20, marginVertical: 8 },
   actions: { flexDirection: 'row', justifyContent: 'space-around' },
   marketRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   marketLabel: { color: colors.muted, fontSize: 14 },

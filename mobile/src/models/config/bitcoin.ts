@@ -12,6 +12,9 @@ export const BITCOIN_TESTNET4 = {
   derivationPath: "m/84'/1'/0'/0/0",
 } as const;
 
+/** BIP84 native SegWit, Bitcoin mainnet coin type 0, first receive address. */
+export const BITCOIN_MAINNET_DERIVATION_PATH = "m/84'/0'/0'/0/0";
+
 export function bitcoinTxUrl(txid: string) {
   return `${BITCOIN_TESTNET4.explorerUrl}/tx/${txid}`;
 }
@@ -21,9 +24,8 @@ export function bitcoinAddressUrl(address: string) {
 }
 
 /**
- * Bitcoin MAINNET. Real BTC, real value. There's no wallet-signing path for this
- * in the app (no WalletConnect Bitcoin adapter available) — mainnet Bitcoin is
- * watch-only: balance and history for an address you already own elsewhere.
+ * Bitcoin MAINNET. Real BTC, real value. Native sends are locally signed with
+ * the active wallet's BIP84 mainnet key after explicit review and PIN approval.
  */
 export const BITCOIN_MAINNET = {
   name: 'Bitcoin',

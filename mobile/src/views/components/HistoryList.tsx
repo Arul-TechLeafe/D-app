@@ -33,7 +33,9 @@ export function HistoryList({ items, emptyText }: { items?: HistoryItem[]; empty
                   ? 'Pending…'
                   : [
                       item.time ? new Date(item.time).toLocaleString() : undefined,
-                      item.counterparty ? `to ${shortAddress(item.counterparty)}` : undefined,
+                      item.counterparty
+                        ? `${incoming ? 'from' : 'to'} ${shortAddress(item.counterparty)}`
+                        : undefined,
                     ]
                       .filter(Boolean)
                       .join(' · ')}

@@ -11,6 +11,7 @@ import { useInAppWallet } from './InAppWallet';
  * - `readProvider` talks straight to the network RPC (fast, no wallet round-trip).
  * - `getSigner()` signs in-app (`kind === 'inapp'`, ethers Wallet) or routes through
  *   MetaMask / Trust Wallet via WalletConnect (`kind === 'walletconnect'`).
+ *   Native mainnet sends in this app use the active in-app key after PIN approval.
  */
 export function useWallet() {
   const account = useAccount();
@@ -64,9 +65,8 @@ export function useWallet() {
 
 /**
  * Signer for a connected EXTERNAL wallet only (MetaMask/Trust via WalletConnect) —
- * never the in-app key. `useWallet().getSigner()` prefers the in-app key whenever
- * the in-app wallet is unlocked, which is unsafe for real funds; any mainnet
- * (real-value) action must sign through this hook instead.
+ * never the in-app key. Use this only for flows that explicitly require an
+ * external wallet (for example, connected-wallet dApp interactions).
  */
 export function useExternalSigner() {
   const account = useAccount();

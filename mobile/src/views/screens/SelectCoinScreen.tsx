@@ -10,7 +10,7 @@ import { CoinBadge } from '../components/wallet';
 export default function SelectCoinScreen() {
   const { action } = useLocalSearchParams<{ action?: 'send' | 'receive' }>();
   const target = action === 'receive' ? '/receive/[id]' : '/send/[id]';
-  const assets = action === 'send' ? ASSETS.filter((a) => !a.readOnly) : ASSETS;
+  const assets = action === 'send' || action === 'receive' ? ASSETS.filter((a) => !a.readOnly) : ASSETS;
   const testnetAssets = assets.filter((a) => !a.mainnet);
   const mainnetAssets = assets.filter((a) => a.mainnet);
 

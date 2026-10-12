@@ -46,6 +46,32 @@ npm run deploy:sepolia
 
 Each deploy updates `mobile/src/models/contracts/addresses.json` (keyed by chain id).
 
+### Testnet cross-network order records
+
+`DappContract` can record indicative demo orders in any direction between Sepolia
+ETH, Bitcoin Testnet4, and Solana Devnet using `createTestnetExchangeOrder`.
+BTC amounts use sats; SOL amounts use lamports.
+`getCrossNetworkOrder` reads an order. For non-EVM source orders, the contract
+owner records the source transaction with `recordCrossNetworkSourceTx` before
+recording the payout transaction using `fulfillCrossNetworkOrder`. The mobile
+Contract Functions screen displays recorded cross-network orders and their
+source/payout transaction IDs.
+
+These calls are **tracking only**: they do not escrow or convert ETH, obtain a
+trusted exchange quote, or broadcast a Bitcoin/Solana transaction. Price-based
+amounts must be calculated by a client/service, and the destination transfer must
+be sent and verified separately. Only use testnet funds and clearly treat quotes
+as indicative. A production bridge needs audited settlement, liquidity, price
+verification, and cross-chain confirmation handling.
+
+The mobile app's Contract Functions screen lets a user select any source and
+destination pair among the three testnets, enter a source amount, and view an
+indicative output estimate based on current ETH/BTC/SOL market prices. It records
+both amounts on the configured EVM testnet. Non-EVM source orders require an
+owner-recorded source transaction ID before payout can be recorded. Source and
+destination IDs are operator assertions, not independently verified cross-chain
+proofs; a successful order record is not proof that either transfer occurred.
+
 ## 2. Mobile app
 
 ```bash
@@ -73,6 +99,8 @@ Fill in the following variables:
   - **Android Emulator**: `http://10.0.2.2:8545`
   - **Physical Phone**: `http://<YOUR_PC_LAN_IP>:8545` (e.g. `http://192.168.1.10:8545`). *`127.0.0.1` will not work from a phone.*
 - `EXPO_PUBLIC_SEPOLIA_RPC_URL` & `EXPO_PUBLIC_SEPOLIA_CONTRACT_ADDRESS`: If testing with Sepolia testnet.
+- `EXPO_PUBLIC_SOLANA_MAINNET_RPC_URL`: Optional primary Solana Mainnet RPC; defaults to the Solana public endpoint.
+- `EXPO_PUBLIC_SOLANA_MAINNET_RPC_FALLBACK_URL`: Optional fallback used when the primary returns HTTP/RPC 403; defaults to `https://solana-rpc.publicnode.com`.
 
 ---
 
@@ -182,7 +210,20 @@ mempool.space testnet4 API; free coins: https://mempool.space/testnet4/faucet.
 - Code: `models/config/bitcoin.ts`, `models/services/bitcoinService.ts`, `controllers/useBitcoin.ts`,
   `views/screens/BitcoinScreen.tsx`.
 - Needs a wallet created or imported **with a recovery phrase** (not a raw private key).
-- Testnet only — never enter a real Bitcoin wallet's phrase.
+- Mainnet BTC uses the separate BIP84 mainnet path shown in the mainnet section below.
+
+## Mainnet portfolio and native transfers
+
+Ethereum, Bitcoin, and Solana mainnet addresses are derived from the active
+wallet's recovery phrase. Native-coin transfers are supported with amount and
+network-fee review plus PIN approval. Bitcoin uses BIP84 path
+`m/84'/0'/0'/0/0`; Ethereum and Solana use the same keys as their test networks.
+Mainnet transfers are irreversible and use real funds. Back up the recovery
+phrase securely, verify the full recipient and network, and send a small test
+amount first. Only native ETH, BTC, and SOL transfers are supported; this does
+not enable token transfers or cross-chain swaps. This wallet implementation has
+not been professionally audited and should not be treated as a production-safe
+cold wallet.
 
 ## Wallet app flow (Trust-style)
 

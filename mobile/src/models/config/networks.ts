@@ -35,9 +35,8 @@ export const sepolia: AppKitNetwork = {
 export const SEPOLIA_FAUCET_URL = 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia';
 
 /**
- * Ethereum MAINNET. Real ETH, real value. The in-app wallet never signs for this
- * network — mainnet actions must go through a connected external wallet
- * (see useExternalSigner in useWallet.ts). Never added to IN_APP_NETWORKS.
+ * Ethereum MAINNET. Real ETH, real value. Native transfers use the active
+ * in-app wallet and require explicit review plus PIN approval.
  */
 export const mainnet: AppKitNetwork = {
   id: 1,

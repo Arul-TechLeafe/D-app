@@ -3,23 +3,25 @@ import { BIP32Factory, type BIP32Interface } from 'bip32';
 import { Psbt, address as btcAddress, networks, payments } from 'bitcoinjs-lib';
 import { Mnemonic, getBytes } from 'ethers';
 
-import { BITCOIN_TESTNET4 } from '../config/bitcoin';
+import { BITCOIN_MAINNET_DERIVATION_PATH, BITCOIN_TESTNET4 } from '../config/bitcoin';
 import {
   broadcastTx,
+  broadcastMainnetTx,
   fetchAddress,
   fetchAddressTxs,
   fetchAddressUtxos,
   fetchFees,
   fetchMainnetAddress,
   fetchMainnetAddressTxs,
+  fetchMainnetAddressUtxos,
+  fetchMainnetFees,
   type ApiAddressStats,
   type ApiTx,
 } from './bitcoinApi';
 
 // ---------------------------------------------------------------------------
-// Bitcoin TESTNET4 wallet service. The key is derived from the same 12-word
-// recovery phrase as the in-app Ethereum wallet (BIP84, m/84'/1'/0'/0/0), so
-// one phrase backs up both. Test coins only — never use a real wallet phrase.
+// Bitcoin wallet service. Testnet4 and mainnet accounts are derived from the
+// active wallet recovery phrase using their respective BIP84 coin types.
 // ---------------------------------------------------------------------------
 
 const bip32 = BIP32Factory(ecc);
@@ -49,21 +51,41 @@ const nodeCache = new Map<string, BIP32Interface>();
 
 /** BIP39 seed (PBKDF2, slow-ish) → BIP84 key. Cached per phrase. */
 function deriveNode(mnemonic: string): BIP32Interface {
-  let node = nodeCache.get(mnemonic);
+  const cacheKey = `${mnemonic}:${BITCOIN_TESTNET4.derivationPath}`;
+  let node = nodeCache.get(cacheKey);
   if (!node) {
     const seed = getBytes(Mnemonic.fromPhrase(mnemonic).computeSeed());
     node = bip32.fromSeed(seed, NETWORK).derivePath(BITCOIN_TESTNET4.derivationPath);
-    nodeCache.set(mnemonic, node);
+    nodeCache.set(cacheKey, node);
   }
   return node;
 }
 
-function outputScript(node: BIP32Interface) {
-  return payments.p2wpkh({ pubkey: node.publicKey, network: NETWORK });
+function deriveMainnetNode(mnemonic: string): BIP32Interface {
+  const cacheKey = `${mnemonic}:${BITCOIN_MAINNET_DERIVATION_PATH}`;
+  let node = nodeCache.get(cacheKey);
+  if (!node) {
+    const seed = getBytes(Mnemonic.fromPhrase(mnemonic).computeSeed());
+    node = bip32.fromSeed(seed, networks.bitcoin).derivePath(BITCOIN_MAINNET_DERIVATION_PATH);
+    nodeCache.set(cacheKey, node);
+  }
+  return node;
+}
+
+function outputScript(node: BIP32Interface, network: typeof NETWORK | typeof networks.bitcoin = NETWORK) {
+  return payments.p2wpkh({ pubkey: node.publicKey, network });
 }
 
 export function deriveBitcoinAccount(mnemonic: string): BitcoinAccount {
-  return { address: outputScript(deriveNode(mnemonic)).address!, path: BITCOIN_TESTNET4.derivationPath };
+  return { address: outputScript(deriveNode(mnemonic), NETWORK).address!, path: BITCOIN_TESTNET4.derivationPath };
+}
+
+/** Derives the first native SegWit mainnet address from the wallet recovery phrase. */
+export function deriveMainnetBitcoinAccount(mnemonic: string): BitcoinAccount {
+  return {
+    address: outputScript(deriveMainnetNode(mnemonic), networks.bitcoin).address!,
+    path: BITCOIN_MAINNET_DERIVATION_PATH,
+  };
 }
 
 export function isValidBitcoinAddress(value: string) {
@@ -142,7 +164,7 @@ export async function getBitcoinTransactions(address: string): Promise<BitcoinTx
   return txs.map((tx) => mapApiTx(tx, address));
 }
 
-// ---- Bitcoin MAINNET (watch-only — no signing path in this app) ------------------
+// ---- Bitcoin MAINNET --------------------------------------------------------------
 
 export async function getMainnetBitcoinBalance(address: string): Promise<BitcoinBalance> {
   const data = await fetchMainnetAddress(address);
@@ -156,10 +178,36 @@ export async function getMainnetBitcoinTransactions(address: string): Promise<Bi
   return txs.map((tx) => mapApiTx(tx, address));
 }
 
+async function getMainnetBitcoinUtxos(address: string): Promise<BitcoinUtxo[]> {
+  const utxos = await fetchMainnetAddressUtxos(address);
+  return utxos
+    .map((u) => ({ txid: u.txid, vout: u.vout, value: BigInt(u.value), confirmed: u.status.confirmed }))
+    .filter((u) => u.confirmed)
+    .sort((a, b) => (b.value > a.value ? 1 : b.value < a.value ? -1 : 0));
+}
+
 /** Recommended fee rates in sat/vB. */
 export async function getFeeRates(): Promise<FeeRates> {
   const f = await fetchFees();
-  return { slow: f.hourFee, normal: f.halfHourFee, fast: f.fastestFee };
+  return { slow: Math.max(1, f.hourFee), normal: Math.max(1, f.halfHourFee), fast: Math.max(1, f.fastestFee) };
+}
+
+export async function estimateBitcoinFee(params: {
+  mnemonic: string;
+  amountSats: bigint;
+  feeRate: number;
+}): Promise<bigint> {
+  if (!Number.isFinite(params.feeRate) || params.feeRate <= 0) throw new Error('Invalid Bitcoin fee rate');
+  if (params.amountSats < DUST_LIMIT_SATS) throw new Error(`Minimum amount is ${formatBtc(DUST_LIMIT_SATS)} tBTC`);
+  const own = outputScript(deriveNode(params.mnemonic), NETWORK);
+  const utxos = await getBitcoinUtxos(own.address!);
+  if (!utxos.length) throw new Error('No spendable Bitcoin testnet outputs found for this wallet');
+  return selectPaymentUtxos(utxos, params.amountSats, params.feeRate).fee;
+}
+
+export async function getMainnetFeeRates(): Promise<FeeRates> {
+  const f = await fetchMainnetFees();
+  return { slow: Math.max(1, f.hourFee), normal: Math.max(1, f.halfHourFee), fast: Math.max(1, f.fastestFee) };
 }
 
 // ---- sending -------------------------------------------------------------------
@@ -171,6 +219,31 @@ function estimateVsize(inputs: number, outputs: number) {
 
 function feeFor(inputs: number, outputs: number, feeRate: number) {
   return BigInt(Math.ceil(estimateVsize(inputs, outputs) * feeRate));
+}
+
+function selectPaymentUtxos(utxos: BitcoinUtxo[], amountSats: bigint, feeRate: number, symbol = 'BTC') {
+  const selected: BitcoinUtxo[] = [];
+  let total = 0n;
+  for (const utxo of utxos) {
+    selected.push(utxo);
+    total += utxo.value;
+    if (total >= amountSats + feeFor(selected.length, 2, feeRate)) break;
+  }
+
+  const change = total - amountSats - feeFor(selected.length, 2, feeRate);
+  if (change < DUST_LIMIT_SATS) {
+    const minimumFee = feeFor(selected.length, 1, feeRate);
+    if (total < amountSats + minimumFee) {
+      throw new Error(`Insufficient ${symbol}: have ${formatBtc(total)}, need ${formatBtc(amountSats + minimumFee)} including fee`);
+    }
+    return { selected, fee: total - amountSats, change: 0n };
+  }
+
+  const fee = feeFor(selected.length, 2, feeRate);
+  if (total < amountSats + fee) {
+    throw new Error(`Insufficient ${symbol}: have ${formatBtc(total)}, need ${formatBtc(amountSats + fee)} including fee`);
+  }
+  return { selected, fee, change };
 }
 
 /**
@@ -191,28 +264,7 @@ export async function sendBitcoin(params: {
   const own = outputScript(node);
   const utxos = await getBitcoinUtxos(own.address!);
 
-  // Largest-first coin selection, sized for recipient + change outputs.
-  const selected: BitcoinUtxo[] = [];
-  let total = 0n;
-  for (const utxo of utxos) {
-    selected.push(utxo);
-    total += utxo.value;
-    if (total >= amountSats + feeFor(selected.length, 2, feeRate)) break;
-  }
-
-  let fee = feeFor(selected.length, 2, feeRate);
-  let change = total - amountSats - fee;
-  if (change < DUST_LIMIT_SATS) {
-    // No change output: leftover dust goes to the miner.
-    fee = feeFor(selected.length, 1, feeRate);
-    if (total < amountSats + fee) {
-      throw new Error(
-        `Insufficient tBTC: have ${formatBtc(total)}, need ${formatBtc(amountSats + fee)} including fee`,
-      );
-    }
-    fee = total - amountSats;
-    change = 0n;
-  }
+  const { selected, fee, change } = selectPaymentUtxos(utxos, amountSats, feeRate, 'tBTC');
 
   const psbt = new Psbt({ network: NETWORK });
   for (const utxo of selected) {
@@ -230,5 +282,55 @@ export async function sendBitcoin(params: {
   const hex = psbt.extractTransaction().toHex();
 
   const txid = await broadcastTx(hex);
+  return { txid, fee };
+}
+
+export async function estimateMainnetBitcoinFee(params: {
+  mnemonic: string;
+  amountSats: bigint;
+  feeRate: number;
+}): Promise<bigint> {
+  if (!Number.isFinite(params.feeRate) || params.feeRate <= 0) throw new Error('Invalid Bitcoin fee rate');
+  if (params.amountSats < DUST_LIMIT_SATS) throw new Error(`Minimum amount is ${formatBtc(DUST_LIMIT_SATS)} BTC`);
+  const own = outputScript(deriveMainnetNode(params.mnemonic), networks.bitcoin);
+  const utxos = await getMainnetBitcoinUtxos(own.address!);
+  if (!utxos.length) throw new Error('No spendable Bitcoin mainnet outputs found for this wallet');
+  return selectPaymentUtxos(utxos, params.amountSats, params.feeRate).fee;
+}
+
+export async function sendMainnetBitcoin(params: {
+  mnemonic: string;
+  to: string;
+  amountSats: bigint;
+  feeRate: number;
+  maxFeeSats?: bigint;
+}): Promise<{ txid: string; fee: bigint }> {
+  const { mnemonic, to, amountSats, feeRate } = params;
+  if (!isValidMainnetBitcoinAddress(to)) throw new Error('Invalid Bitcoin mainnet address');
+  if (!Number.isFinite(feeRate) || feeRate <= 0) throw new Error('Invalid Bitcoin fee rate');
+  if (amountSats < DUST_LIMIT_SATS) throw new Error(`Minimum amount is ${formatBtc(DUST_LIMIT_SATS)} BTC`);
+
+  const own = outputScript(deriveMainnetNode(mnemonic), networks.bitcoin);
+  const utxos = await getMainnetBitcoinUtxos(own.address!);
+  if (!utxos.length) throw new Error('No spendable Bitcoin mainnet outputs found for this wallet');
+  const { selected, fee, change } = selectPaymentUtxos(utxos, amountSats, feeRate);
+  if (params.maxFeeSats !== undefined && fee > params.maxFeeSats) {
+    throw new Error('Bitcoin network fee increased; estimate the fee and review the transaction again');
+  }
+
+  const psbt = new Psbt({ network: networks.bitcoin });
+  for (const utxo of selected) {
+    psbt.addInput({
+      hash: utxo.txid,
+      index: utxo.vout,
+      witnessUtxo: { script: own.output!, value: utxo.value },
+    });
+  }
+  psbt.addOutput({ address: to.trim(), value: amountSats });
+  if (change > 0n) psbt.addOutput({ address: own.address!, value: change });
+  psbt.signAllInputs(deriveMainnetNode(mnemonic));
+  psbt.finalizeAllInputs();
+
+  const txid = await broadcastMainnetTx(psbt.extractTransaction().toHex());
   return { txid, fee };
 }

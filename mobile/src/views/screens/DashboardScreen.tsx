@@ -29,6 +29,11 @@ export default function DashboardScreen() {
     useCallback(() => {
       refresh();
       refreshPrices();
+      const timer = setInterval(() => {
+        refresh();
+        refreshPrices();
+      }, 30_000);
+      return () => clearInterval(timer);
     }, [refresh, refreshPrices])
   );
   const [selectedCoinId, setSelectedCoinId] = useState<string>('all');
@@ -98,7 +103,10 @@ export default function DashboardScreen() {
           ) : (
             (() => {
               const selectedBalance = selectedCoinId === 'all' ? undefined : activeBalances?.find((b) => b.asset.id === selectedCoinId);
-              const addressToCopy = selectedCoinId === 'all' ? active.keys.address : selectedBalance?.address ?? active.keys.address;
+              const addressToCopy =
+                selectedCoinId === 'all'
+                  ? (network === 'mainnet' ? primary?.address : active.keys.address) ?? active.keys.address
+                  : selectedBalance?.address ?? active.keys.address;
               
               return (
                 <>
@@ -170,7 +178,11 @@ export default function DashboardScreen() {
           </Pressable>
           <Pressable
             style={[s.tab, network === 'mainnet' && s.tabActive]}
-            onPress={() => setNetwork('mainnet')}
+            onPress={() => {
+              setNetwork('mainnet');
+              refresh();
+              refreshPrices();
+            }}
           >
             <Text style={[s.tabText, network === 'mainnet' && s.tabTextActive]}>Mainnet</Text>
           </Pressable>
