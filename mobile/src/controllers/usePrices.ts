@@ -3,10 +3,7 @@ import { useCallback } from 'react';
 
 import { getAsset, type AssetId } from '../models/config/assets';
 import { getDisplayCurrency } from '../models/format';
-import {
-  fetchCryptoPrices,
-  type MarketPrices,
-} from '../models/services/blockchainComApi';
+import {fetchCryptoPrices,type MarketPrices,} from '../models/services/blockchainComApi';
 import type { AssetBalance } from './useAssets';
 import { useAsync } from './useAsync';
 import { usePrefs } from './PrefsStore';
